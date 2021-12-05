@@ -92,7 +92,7 @@ def plot_ppi_map_modified(
         rmd.ax = ax
         return pm
 
-def plot_radar(radarFileName, saveFileName=None, plotRadius=160, rangeRingStep=None, plot_radial=None):
+def plot_radar(radarFileName, saveFileName=None, plotRadius=160, rangeRingStep=None, shouldPlotSQI=False):
     px = 1/plt.rcParams["figure.dpi"]
     basePath = path.join(getcwd(), "output")
     radarDataDir = path.join(getcwd(), "radarData")
@@ -105,9 +105,18 @@ def plot_radar(radarFileName, saveFileName=None, plotRadius=160, rangeRingStep=N
         logFile.write(warningString)
         logFile.close()
         return
-    fig, ax = plt.subplots(1, 1, subplot_kw={'projection': ccrs.PlateCarree()})
+    ADRADMapDisplay = pyart.graph.RadarMapDisplay(radar)
+    if shouldPlotSQI:
+        fig = plt.figure()
+        ax = plt.subplot(2, 1, 1, projection=ccrs.PlateCarree())
+        sqiAx = plt.subplot(2, 1, 2, projection=ccrs.PlateCarree())
+    else:
+        fig = plt.figure()
+        ax = plt.axes(projection=ccrs.PlateCarree())
     fig.set_size_inches(1920*px, 1080*px)
     if "normalized_coherent_power" in radar.fields.keys():
+        if shouldPlotSQI:
+            ADRADMapDisplay.plot_ppi_map("normalized_coherent_power", 0, resolution="10m", colorbar_flag=False, width=2*plotRadius*1000, height=2*plotRadius*1000, ax=sqiAx)
         sqiValid = radar.fields["normalized_coherent_power"]["data"]
         sqiValid = np.where(sqiValid > 0.5, 1, 0)
         finalRefl = np.multiply(radar.fields["reflectivity"]["data"], sqiValid)
@@ -118,15 +127,12 @@ def plot_radar(radarFileName, saveFileName=None, plotRadius=160, rangeRingStep=N
     norm, cmap = ctables.registry.get_with_steps("NWSReflectivity", 5, 5)
     cmap.set_under("#00000000")
     cmap.set_over("black")
-    ADRADMapDisplay = pyart.graph.RadarMapDisplay(radar)
-    plotHandle = plot_ppi_map_modified(ADRADMapDisplay, fieldToPlot, 0, resolution="10m", embelish=False, cmap=cmap, norm=norm, colorbar_flag=False, width=2*plotRadius*1000, height=2*plotRadius*1000)
+    plotHandle = plot_ppi_map_modified(ADRADMapDisplay, fieldToPlot, 0, resolution="10m", embelish=False, cmap=cmap, norm=norm, colorbar_flag=False, width=2*plotRadius*1000, height=2*plotRadius*1000, ax=ax)
     ADRADMapDisplay.set_aspect_ratio(1)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         ADRADMapDisplay.plot_range_rings(range(0, plotRadius+1, rangeRingStep), col="gray", ls="dotted")
     ax.add_feature(USCOUNTIES.with_scale("5m"), edgecolor="gray")
-    if plot_radial is not None:
-        ax.plot([radar.longitude["data"][0], radar.longitude["data"][0]+5*np.sin(np.deg2rad(plot_radial))], [radar.latitude["data"][0], radar.latitude["data"][0]+5*np.cos(np.deg2rad(plot_radial))], color="black", linewidth=3)
     infoString = str()
     if "instrument_name" in radar.metadata.keys():
         insStr = radar.metadata["instrument_name"]
@@ -171,5 +177,5 @@ if __name__ == "__main__":
     from itertools import repeat
     radarDataDir = path.join(getcwd(), "radarData")
     with mp.Pool(processes=12) as pool:
-        pool.starmap(plot_radar, zip(sorted(listdir(radarDataDir)), repeat(None), repeat(160), repeat(40), repeat(None)))
+        pool.starmap(plot_radar, zip(sorted(listdir(radarDataDir)), repeat(None), repeat(160), repeat(40), repeat(True)))
             
